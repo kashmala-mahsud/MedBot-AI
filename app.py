@@ -24,6 +24,7 @@ headers = {
     "api-key": SUB_KEY   # (keeping same as you requested)
 }
 
+
 def get_chatbot_response(user_message):
     global chat_history
 
@@ -34,7 +35,13 @@ def get_chatbot_response(user_message):
     })
 
     # 👉 Keep last 10 messages only
-    recent_history = chat_history[-10:]
+    recent_history = [
+    {
+        "role": msg["role"],
+        "content": str(msg["content"])[:1500]
+    }
+    for msg in chat_history[-6:]
+]
 
     payload = {
         "data_sources": [
@@ -46,7 +53,7 @@ def get_chatbot_response(user_message):
                     "semantic_configuration": "default",
                     "query_type": "vector_simple_hybrid",
                     "in_scope": True,
-                    "strictness": 3,
+                    "strictness": 2,
                     "top_n_documents": 5,
                     "authentication": {
                         "type": "api_key",
@@ -59,21 +66,77 @@ def get_chatbot_response(user_message):
                 }
             }
         ],
+
         "messages": [
             {
                 "role": "system",
-                "content": "You are a Health AI Assistant for a child (under 5 years). Your task: Understand the SYMPTOMS. Give clear, simple, and helpful advice. Use very simple and easy language. Speak in a friendly, calm, and caring tone like a helpful parent. Do NOT give final medical advice or diagnosis. Response Format (STRICT - ONLY for full medical queries): Each section must be clearly written in Headings like:\\n1. Symptoms\\n2. Possible Conditions\\n3. Basic Treatment\\n4. Advice\\n5. Remedies. Rules must be follow: Include ALL headings ONLY when the user provides a full medical situation (never leave any empty). If the user asks a FOLLOW-UP or SIMPLE question: Respond in short, simple, natural language (NO headings, no structured format). Avoid repeating the same points. Keep answers short, clear, and easy to understand. If the question is NOT about a child under 5 or not about common child problems OR is unsafe/harmful:\n- Respond ONLY with: I DON'T KNOW.\n- Do NOT include any headings in this case"
+                "content": """
+You are a Health AI Assistant for a child under 5 years old.
+
+Your task:
+- Understand the child's symptoms.
+- Give clear, simple, and helpful basic treatment.
+- Use very simple and easy English.
+- Speak in a friendly, calm, and caring tone like a helpful parent.
+- Do NOT give final medical advice or diagnosis.
+
+STRICT Response Rules:
+
+1. Use headings ONLY when the user gives a full medical situation with symptoms.
+   Never leave any heading empty.
+
+   Use these headings:
+   1. Symptoms
+   2. Possible Conditions
+   3. Basic Treatment
+
+2. At the end, ask:
+   "If you want, I can also share simple advice and home remedies."
+
+   If the user wants, then provide:
+   - Advice
+   - Remedies
+
+3. Keep each section SHORT:
+   - Maximum 2–4 bullet points OR 1 very short paragraph.
+   - Avoid long explanations.
+   - Avoid repeating information.
+   - Maximum 3 basic treatment points only.
+
+4. If the child may have more than one condition or multiple symptoms with different treatments,
+ALWAYS use this markdown table format:
+
+| S.No | Condition/Symptom | Basic Treatment |
+|------|-------------------|-----------------|
+| 1 | Fever | Paracetamol may help |
+
+5. If the user asks a FOLLOW-UP or SIMPLE question:
+   - Respond in short, simple, clear, and natural language.
+   - Do NOT use headings.
+   - Do NOT use structured format.
+
+6. If the question:
+   - is NOT about a child under 5,
+   - is NOT about common child problems,
+   - OR asks for harmful, illegal, or dangerous actions to perform intentionally,
+
+   Respond ONLY with:
+   I DON'T KNOW.
+
+7. Do NOT include any headings when responding with:
+   I DON'T KNOW.
+"""
             }
         ] + recent_history,   # ✅ MEMORY ADDED HERE
 
         "temperature": 0.5,
         "max_tokens": 800
     }
-    
+
     try:
-        response = requests.post(url, headers=headers, json=payload)
+        response = requests.post(url, headers=headers, json=payload, timeout=30)
         response.raise_for_status()
-        
+
         response_data = response.json()
         assistant_message = response_data['choices'][0]['message']['content']
 
@@ -97,10 +160,10 @@ def index():
 @app.route('/get', methods=['POST'])
 def get_response():
     user_message = request.form.get('msg', '').strip()
-    
+
     if not user_message:
         return "Please enter a message", 400
-    
+
     bot_response = get_chatbot_response(user_message)
     return bot_response
 
